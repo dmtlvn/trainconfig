@@ -102,7 +102,7 @@ Each `Config.update()` call increments the step number.
 
 2. In your terminal start the control panel and follow the provided URL:
 ```
-traincontrol [PORT]  # by default it runs on a 8501 port
+trainconfig [PORT]  # by default it runs on a 8501 port
 ```
 
 ### Known Issues
