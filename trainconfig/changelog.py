@@ -7,7 +7,7 @@ from .utils import dict_diff, deep_update
 logger = logging.getLogger(__name__)
 
 
-class History:
+class Changelog:
     
     def __init__(self, path, init_config = None):
         self.counter = 0

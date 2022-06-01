@@ -4,77 +4,95 @@ import yaml
 
 from dotdict import dotdict
 
-from .history import History
+from .changelog import Changelog
 from .utils import parse_config, assemble_config
-from .buffer import SQLiteBuffer, HISTORY_BUFFER_FILE, FORM_BUFFER_FILE
+from .buffer import SQLiteBuffer, CHANGELOG_BUFFER_FILE, EDITOR_BUFFER_FILE, TMP_DIR
 
 
-class Config:
-    
-    config = dotdict()
+class ConfigProto:
+
+    editable = True
+    _config = dotdict()
+    _changelog = None
     _schema = {}
+    _changelog_buffer = None
+    _editor_buffer = None
     
     @classmethod
-    def init(cls, config_file, changelog_file, manual = False):
-        cls.manual = manual
-        cls.config_file = config_file
-        cls.changelog_file = changelog_file
-        
+    def init(cls, config_file: str, changelog_file: str, initial_step: int = 0, editable: bool = True):
+        """
+        Config setup method. Call it before usage.
+
+        Parameters:
+        :param config_file: path to the initial config YAML file.
+        :param changelog_file: path to the changelog file, which stores all the manual config edits,
+            done with the control panel
+        :param initial_step: fast-forwards config values through the changelog to the given step
+            Default: 0
+        :param editable: if False, ignores all the manual changes and uses changelog only.
+            Use it to prevent unwanted edits of the changelog. Default: True
+        """
+        assert initial_step >= 0, "Initial step must be >= 0"
+        if not os.path.exists(TMP_DIR):
+            os.mkdir(TMP_DIR)
+
+        cls.editable = editable
+
         with open(config_file, 'r') as file:
             config = yaml.full_load(file)
             state, schema = parse_config(config)
-            
-        if not os.path.exists(cls.changelog_file):
-            open(cls.changelog_file, 'w').close()
-            
-        cls._tmp_dir = os.path.join(os.path.expanduser("~"), ".train_config/")
-        if not os.path.exists(cls._tmp_dir):
-            os.mkdir(cls._tmp_dir)
-        
-        cls.history = History(cls.changelog_file, init_config = state)
 
-        cls._history_buffer = SQLiteBuffer(name = "history", file = HISTORY_BUFFER_FILE)
-        cls._history_buffer.put(config)
-        
-        cls._form_buffer = SQLiteBuffer(name = "form", file = FORM_BUFFER_FILE)
-        cls._form_buffer.put(config)
-        
-        cls.config = dotdict(state)
+        if not os.path.exists(changelog_file):
+            open(changelog_file, 'w').close()
+
+        cls._changelog = Changelog(changelog_file, init_config=state)
+        if initial_step > 0:
+            cls._changelog.rewind(initial_step)
+            state = cls._changelog.state
+            config = assemble_config(state, schema)
+
+        cls._changelog_buffer = SQLiteBuffer(name="changelog", file=CHANGELOG_BUFFER_FILE).put(config, editable)
+        cls._editor_buffer = SQLiteBuffer(name="editor", file=EDITOR_BUFFER_FILE).put(config, editable)
         cls._schema = schema
+        cls._config = dotdict(state)
 
-        atexit.register(_cleanup, cls._form_buffer, cls._history_buffer)
+        atexit.register(cls.close)
 
     @classmethod
     def update(cls):
-        historic_state, is_updated_from_history = cls.history.get_next()
-        if is_updated_from_history:
-            historic_config = assemble_config(historic_state, cls._schema)
-            cls._form_buffer.put(historic_config)
-            cls._history_buffer.put(historic_config)
-        elif cls.manual:
-            manual_config = cls._history_buffer.get()
+        """
+        Refreshes config values: checks for the next step update from the changelog or
+        from the control panel.
+        """
+        assert cls._changelog_buffer is not None, "Config is not set up. Run Config.init(...) first"
+        changelog_state, is_updated_from_changelog = cls._changelog.get_next()
+        if is_updated_from_changelog:
+            changelog_config = assemble_config(changelog_state, cls._schema)
+            cls._editor_buffer.put(changelog_config, cls.editable)
+            cls._changelog_buffer.put(changelog_config, cls.editable)
+        elif cls.editable:
+            manual_config, _ = cls._changelog_buffer.get()
             manual_state, _ = parse_config(manual_config)        
-            is_updated_manually = cls.history.probe(manual_state)
+            is_updated_manually = cls._changelog.probe(manual_state)
             if is_updated_manually:
-                cls._form_buffer.put(manual_config)
-                cls._history_buffer.put(manual_config)
-                cls.history.update(manual_state)
-                cls.history.commit()
-        cls.config = dotdict(cls.history.state)
+                cls._editor_buffer.put(manual_config, cls.editable)
+                cls._changelog_buffer.put(manual_config, cls.editable)
+                cls._changelog.update(manual_state)
+                # cls._changelog.commit()
+        cls._config = dotdict(cls._changelog.state)
+
+    @classmethod
+    def close(cls):
+        os.remove(CHANGELOG_BUFFER_FILE)
+        os.remove(EDITOR_BUFFER_FILE)
             
     @classmethod
-    def __getattr__(cls, key):
-        return cls.config[key]
+    def __getattr__(cls, key: str):
+        return cls._config[key]
 
-    @classmethod
-    def __setattr__(cls, key, value):
-        cls.config[key] = value
-        
     @classmethod
     def __repr__(cls):
-        return str(cls.config.to_dict())
+        return str(cls._config.to_dict())
 
 
-def _cleanup(fb, hb):
-    fb.put({})
-    hb.put({})
+Config = ConfigProto()

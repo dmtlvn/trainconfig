@@ -1,5 +1,6 @@
 import os
 import sys
+import shutil
 from setuptools import setup
 
 setup(
@@ -20,6 +21,7 @@ setup(
     zip_safe = True,
 )
 
+# REGISTER BASH COMMAND
 BASH_CMD = """FILE=$(python -c "import sysconfig; print(sysconfig.get_paths()['purelib'] + '/trainconfig/frontend.py')")
 streamlit run $FILE --server.headless=True --server.port=${1:-8501} --server.runOnSave=True\n"""
 
@@ -28,3 +30,8 @@ CMD_PATH = os.path.join(BIN_PATH, 'trainconfig')
 with open(CMD_PATH, 'w') as file:
     file.write(BASH_CMD)
 os.chmod(CMD_PATH, mode = 0o775)
+
+# CLEAN UP
+TMP_DIR = os.path.expanduser("~/.train_config")
+if os.path.exists(TMP_DIR):
+    shutil.rmtree(TMP_DIR)

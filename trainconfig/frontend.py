@@ -8,7 +8,7 @@ try:
 except ModuleNotFoundError:
     from streamlit.report_thread import get_report_ctx as get_script_run_ctx
     
-from trainconfig.buffer import SQLiteBuffer, HISTORY_BUFFER_FILE, FORM_BUFFER_FILE
+from trainconfig.buffer import SQLiteBuffer, CHANGELOG_BUFFER_FILE, EDITOR_BUFFER_FILE
 
 
 CSS = """
@@ -57,10 +57,10 @@ def install_watcher(file):
     
     
 def init():
-    install_watcher(FORM_BUFFER_FILE)
+    install_watcher(EDITOR_BUFFER_FILE)
     st.markdown(f'<style>{CSS}</style>', unsafe_allow_html = True)
-    st.session_state.setdefault('history_buffer', SQLiteBuffer(name = 'history', file = HISTORY_BUFFER_FILE))
-    st.session_state.setdefault('form_buffer', SQLiteBuffer(name = 'form', file = FORM_BUFFER_FILE))
+    st.session_state.setdefault('changelog_buffer', SQLiteBuffer(name = 'changelog', file = CHANGELOG_BUFFER_FILE))
+    st.session_state.setdefault('editor_buffer', SQLiteBuffer(name = 'editor', file = EDITOR_BUFFER_FILE))
     
     
 def build_key_map(config):
@@ -115,7 +115,7 @@ def auto_component(parent, value, key, disabled):
         parent.text_input(label = "", value = value, key = key, disabled = disabled)
     
     
-def build_layout(key_map):
+def build_layout(key_map, editable):
     
     def sort_key(x):
         return 1 if x[1]['_type'] == 'dict' else \
@@ -149,7 +149,7 @@ def build_layout(key_map):
                 label.markdown(f"{tab}**+&nbsp;{key}&nbsp;:**")
                 _crawl(item, disabled)
 
-    return _crawl(key_map, False)
+    return _crawl(key_map, not editable)
 
 
 def get_sub_item(config, path):
@@ -158,24 +158,32 @@ def get_sub_item(config, path):
         sub_item = sub_item[k]
     return sub_item
 
-    
-if __name__ == "__main__":
-    init()
-        
-    input_cfg = st.session_state.form_buffer.get()
+
+def main():
+    try:
+        init()
+    except FileNotFoundError:
+        st.write("No connection to the config manager. Run Config.init() in your app and reload this page.")
+        return
+
+    input_cfg, editable = st.session_state.editor_buffer.get()
     if input_cfg is None:
         input_cfg = {}
-    
+
     key_map = build_key_map(copy.deepcopy(input_cfg))
     unrolled_key_map = unroll_key_map(key_map)
-    
-    build_layout(key_map)
-    
+
+    build_layout(key_map, editable)
+
     output_cfg = copy.deepcopy(input_cfg)
     for key, (value, path) in unrolled_key_map.items():
         if key not in st.session_state:
             continue
         sub_cfg = get_sub_item(output_cfg, path[:-1])
-        sub_cfg[path[-1]] = state_value = cast(st.session_state[key])
-          
-    st.session_state.history_buffer.put(output_cfg)    
+        sub_cfg[path[-1]] = cast(st.session_state[key])
+
+    st.session_state.changelog_buffer.put(output_cfg, editable)
+
+
+if __name__ == "__main__":
+    main()

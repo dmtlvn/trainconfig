@@ -65,35 +65,40 @@ Currently, info in brackets is ignored.*
 Control panel is a streamlit app which displays the editing form according to the provided YAML file. It allows 
 editing config values in realtime and sends these updates to a config manager. 
 
-Config manager is a `Config` object, which keeps and tracks all the changes made via the control panel and always 
+Config manager is a `Config` object, which keeps track of all the changes made via the control panel and always 
 provides up-to-date values. This is the main interface your code should interact with. It is implemented as a static 
 class and shares its data across all modules (but not across processes). For convenience, all the values 
 in the `Config` object can be accessed in an attribute-like fashion.
 
-Config manager provides a `manual` toggle, which allows edits from the control panel. Unset it if you make a scheduled 
+Config manager provides a `editable` toggle, which allows edits from the control panel. Unset it if you make a scheduled 
 run to prevent unwanted edits.
 
-**IMPORTANT:** If `manual` toggle is set, and changes are made to the config via the control panel mid-schedule, 
+**IMPORTANT:** If `editable` toggle is set, and changes are made to the config via the control panel mid-schedule, 
 **the rest of the schedule from the current step will be overwritten!**. This feature was left for easier experimentation
-purposes, but should be used with caution, because may lead to the loss of changelog information.
+purposes, but should be used with caution, because may lead to the loss of the changelog information.
 
 ### Usage
 
-Start your training script. Here's an example of dynamically updating a learning rate during training. The `init()` 
-method accepts a path to a base config file, path to a changelog file and a `manual` flag. At the beginning of each 
-iteration update the config. This will pull fresh parameter values from the changelog file or from the web form. 
+1. Start your main training script. Here's an example of dynamically updating a learning rate during training. The `init()` 
+method accepts a path to a base config file, path to a changelog file, `initial_step` number and a `editable` flag. 
+Setting the initial step fast-forwards all the changes to a given step. At the beginning of each iteration update the 
+config. This will pull fresh parameter values from the changelog file or from the web form. Call `Config.close()` at the
+end of the script to perform cleanup.
 ```python
 from trainconfig import Config as C
 
-C.init('config.yaml', 'changelog.yaml', manual = True)
-# ... 
+C.init('config.yaml', 'changelog.yaml', initial_step = 10000, editable = True)
+ ... 
 for batch in data_loader:
     C.update()
-    # ...
+    ...
     for params in optimizer.param_groups:
             params['lr'] = C.generator.opt.lr
-    # ...    
+    ...    
+...
+C.close()
 ```
+Each `Config.update()` call increments the step number.
 
 2. In your terminal start the control panel and follow the provided URL:
 ```
