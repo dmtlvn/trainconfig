@@ -1,5 +1,4 @@
 import os
-import atexit
 import yaml
 
 from dotdict import dotdict
@@ -56,8 +55,6 @@ class ConfigProto:
         cls._schema = schema
         cls._config = dotdict(state)
 
-        atexit.register(cls.close)
-
     @classmethod
     def update(cls):
         """
@@ -78,7 +75,7 @@ class ConfigProto:
                 cls._editor_buffer.put(manual_config, cls.editable)
                 cls._changelog_buffer.put(manual_config, cls.editable)
                 cls._changelog.update(manual_state)
-                # cls._changelog.commit()
+                cls._changelog.commit()
         cls._config = dotdict(cls._changelog.state)
 
     @classmethod
